@@ -9,7 +9,7 @@ from discord.ext import commands
 
 class Bet(commands.Cog):
     DATA_FILE_PATH = 'data.bin'
-    EMOJIES_KEY = '__EMOJIES'
+    CHOICES_KEY = '__CHOICES'
     MAX_CHOICES = 20
     EMOJIES = [
         '🤪',
@@ -67,7 +67,7 @@ class Bet(commands.Cog):
             return
         if message.id not in self.current_bets:
             return
-        if reaction.emoji not in self.current_bets[message.id][self.EMOJIES_KEY]:
+        if reaction.emoji not in self.current_bets[message.id][self.CHOICES_KEY].keys():
             return
         if user.id in self.current_bets[message.id] and reaction.emoji != self.current_bets[message.id][user.id]:
             await message.remove_reaction(reaction.emoji, user)
@@ -100,14 +100,15 @@ class Bet(commands.Cog):
         emojies = emojies[:len(args)]
         # Send message
         message = 'Faites vos jeux :dollar: !\n'
-        for emoji, choice in zip(emojies, args):
+        choices = dict(zip(emojies, args))
+        for emoji, choice in choices.items():
             message += '\n\t{} {}'.format(emoji, choice)
         message = await ctx.send(message)
         # Send reactions
         for emoji in emojies:
             await message.add_reaction(emoji)
         self.current_bets[message.id] = {
-            self.EMOJIES_KEY: emojies,
+            self.CHOICES_KEY: choices,
         }
         self._save_data()
 
@@ -120,6 +121,8 @@ class Bet(commands.Cog):
     @commands.command()
     @commands.has_permissions(administrator=True)
     async def endbet(self, ctx, winning_choice):
+        if not self.current_bets:
+            return
         # TODO add a way to choose the bet concerned
         message_id, bet = list(self.current_bets.items())[-1]
         await self.endbet_message(ctx, message_id, bet, winning_choice)
@@ -129,7 +132,8 @@ class Bet(commands.Cog):
         winners = []
         # Set message and points in leaderboard
         for member, choice in bet.items():
-            if choice == winning_choice:
+            # Winning choice can be the emoji or the value
+            if choice == winning_choice or bet[self.CHOICES_KEY][choice].lower() == winning_choice.lower():
                 winners.append(self.bot.get_user(member))
                 self.leaderboard[member] = self.leaderboard.setdefault(member, 0) + 1
             else:
@@ -142,7 +146,7 @@ class Bet(commands.Cog):
                 )
             else:
                 await ctx.send(
-                    'Bravo à {}'.format(', '.format((member.display_name for member in winners)))
+                    'Bravo à {}'.format(', '.format([member.display_name for member in winners]))
                 )
         else:
             await ctx.send("C'est vraiment un serveur de looser ici :face_with_hand_over_mouth: .")
