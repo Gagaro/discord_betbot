@@ -1,6 +1,7 @@
-import itertools
 import pickle
-from copy import copy
+import random
+import sys
+import traceback
 from os import getenv
 
 from discord.ext import commands
@@ -8,65 +9,71 @@ from discord.ext import commands
 
 class Bet(commands.Cog):
     DATA_FILE_PATH = 'data.bin'
+    EMOJIES_KEY = '__EMOJIES'
+    MAX_CHOICES = 20
     EMOJIES = [
-        'zero',
-        'one',
-        'two',
-        'three',
-        'four',
-        'five',
-        'six',
-        'seven',
-        'height',
-        'nine',
-        'regional_indicator_a',
-        'regional_indicator_b',
-        'regional_indicator_c',
-        'regional_indicator_d',
-        'regional_indicator_e',
-        'regional_indicator_f',
-        'regional_indicator_g',
-        'regional_indicator_h',
-        'regional_indicator_i',
-        'regional_indicator_j',
-        'regional_indicator_k',
-        'regional_indicator_l',
-        'regional_indicator_m',
-        'regional_indicator_n',
-        'regional_indicator_o',
-        'regional_indicator_p',
-        'regional_indicator_q',
-        'regional_indicator_r',
-        'regional_indicator_s',
-        'regional_indicator_t',
-        'regional_indicator_u',
-        'regional_indicator_v',
-        'regional_indicator_w',
-        'regional_indicator_x',
-        'regional_indicator_y',
-        'regional_indicator_z',
+        '🤪',
+        '🙀',
+        '😂',
+        '😭',
+        '😱',
+        '🦄',
+        '🦇',
+        '🦂',
+        '🦖',
+        '🐙',
+        '🦈',
+        '🦦',
+        '🐉',
+        '🐀',
+        '💀',
+        '🎅',
+        '🦔',
+        '🦥',
+        '🦝',
     ]
 
     def __init__(self, bot):
         self.bot = bot
         self.leaderboard = {}
-        self.current_bets_messages = []
+        self.current_bets = {}
         self._load_data()
 
     def _load_data(self):
         try:
             with open(self.DATA_FILE_PATH, 'br') as data_file:
-                self.leaderboard, self.current_bets_messages = pickle.load(data_file)
+                (
+                    self.leaderboard,
+                    self.current_bets
+                ) = pickle.load(data_file)
         except FileNotFoundError:
             pass
 
     def _save_data(self):
         with open(self.DATA_FILE_PATH, 'bw') as data_file:
-             pickle.dump((self.leaderboard, self.current_bets_messages), data_file)
+             pickle.dump((
+                 self.leaderboard,
+                 self.current_bets
+             ), data_file)
 
     @commands.Cog.listener()
     async def on_ready(self):
         print("Ready!")
+
+    @commands.Cog.listener()
+    async def on_reaction_add(self, reaction, user):
+        message = reaction.message
+        if user == bot.user:
+            return
+        if message.id not in self.current_bets:
+            return
+        if reaction.emoji not in self.current_bets[message.id][self.EMOJIES_KEY]:
+            return
+        if user.id in self.current_bets[message.id] and reaction.emoji != self.current_bets[message.id][user.id]:
+            await message.remove_reaction(reaction.emoji, user)
+            return
+        self.current_bets[message.id][user.id] = reaction.emoji
+        self._save_data()
 
     @commands.command()
     @commands.cooldown(1, 30)
@@ -82,39 +89,49 @@ class Bet(commands.Cog):
         if not args:
             await ctx.send("Met des choix putain :face_with_symbols_over_mouth:.\n!startbet un deux trois")
             return
-        if len(args) > len(self.EMOJIES):
-            await ctx.send("Oups, max {} pour le moment.".format(len(self.EMOJIES)))
+        if len(args) > self.MAX_CHOICES:
+            await ctx.send("Oups, max {} pour le moment.".format(self.MAX_CHOICES))
             return
-        message = 'Bet en cours !\n'
-        for index, choice in enumerate(args):
-            message += '\n\t:{}: {}'.format(self.EMOJIES[index], choice)
+        # Pick emojies randomly
+        emojies = self.EMOJIES.copy()
+        random.shuffle(emojies)
+        emojies = emojies[:len(args)]
+        # Send message
+        message = 'Faites vos jeux :dollar: !\n'
+        for emoji, choice in zip(emojies, args):
+            message += '\n\t{} {}'.format(emoji, choice)
         message = await ctx.send(message)
-        for i in range(len(args)):
-            await message.add_reaction(self.EMOJIES[i])
-        self.current_bets_messages.append(message)
+        # Send reactions
+        for emoji in emojies:
+            await message.add_reaction(emoji)
+        self.current_bets[message.id] = {
+            self.EMOJIES_KEY: emojies,
+        }
+        self._save_data()
 
     @startbet.error
     async def startbet_error(self, ctx, error):
         if isinstance(error, commands.MissingPermissions):
             await ctx.send('Non mais tu te prends pour qui ?')
+        traceback.print_exception(type(error), error, error.__traceback__, file=sys.stderr)
 
-    async def endbet(self, ctx, winning_choice: int):
-        message = 'Les paris étaient :'
+    @commands.command()
+    @commands.has_permissions(administrator=True)
+    async def endbet(self, ctx, winning_choice):
+        # TODO add a way to choose the bet concerned
+        message_id, bet = list(self.current_bets.items())[-1]
+        await self.endbet_message(ctx, message_id, bet, winning_choice)
+
+    async def endbet_message(self, ctx, message_id, bet, winning_choice):
+        del self.current_bets[message_id]
         winners = []
         # Set message and points in leaderboard
-        for choice, members in self.current_bet.items():
-            members = [self.bot.get_user(member_id) for member_id in members]
-            message += '\n\t[{}] {}'.format(
-                choice, ', '.join((member.display_name for member in members))
-            )
+        for member, choice in bet.items():
             if choice == winning_choice:
-                winners = members
-                for member in members:
-                    self.leaderboard[member.id] = self.leaderboard.setdefault(member.id, 0) + 1
+                winners.append(self.bot.get_user(member))
+                self.leaderboard[member] = self.leaderboard.setdefault(member, 0) + 1
             else:
-                for member in members:
-                    self.leaderboard.setdefault(member.id, 0)
-        await ctx.send(message)
+                self.leaderboard.setdefault(member, 0)
 
         if winners:
             if len(winners) == 1:
@@ -123,13 +140,19 @@ class Bet(commands.Cog):
                 )
             else:
                 await ctx.send(
-                    'Les gagnants sont {}'.format(', '.format((member.display_name for member in winners)))
+                    'Bravo à {}'.format(', '.format((member.display_name for member in winners)))
                 )
         else:
             await ctx.send("C'est vraiment un serveur de looser ici :face_with_hand_over_mouth: .")
-        self.current_choices = []
-        self.current_bet = {}
         self._save_data()
+
+    @endbet.error
+    async def endbet_error(self, ctx, error):
+        if isinstance(error, commands.MissingPermissions):
+            await ctx.send('Non mais tu te prends pour qui ?')
+        elif isinstance(error, commands.MissingRequiredArgument):
+            await ctx.send("Tu peux pas finir le bet sans résultat :zany_face:.")
+        traceback.print_exception(type(error), error, error.__traceback__, file=sys.stderr)
 
 
 print("Starting...")
