@@ -8,24 +8,65 @@ from discord.ext import commands
 
 class Bet(commands.Cog):
     DATA_FILE_PATH = 'data.bin'
+    EMOJIES = [
+        'zero',
+        'one',
+        'two',
+        'three',
+        'four',
+        'five',
+        'six',
+        'seven',
+        'height',
+        'nine',
+        'regional_indicator_a',
+        'regional_indicator_b',
+        'regional_indicator_c',
+        'regional_indicator_d',
+        'regional_indicator_e',
+        'regional_indicator_f',
+        'regional_indicator_g',
+        'regional_indicator_h',
+        'regional_indicator_i',
+        'regional_indicator_j',
+        'regional_indicator_k',
+        'regional_indicator_l',
+        'regional_indicator_m',
+        'regional_indicator_n',
+        'regional_indicator_o',
+        'regional_indicator_p',
+        'regional_indicator_q',
+        'regional_indicator_r',
+        'regional_indicator_s',
+        'regional_indicator_t',
+        'regional_indicator_u',
+        'regional_indicator_v',
+        'regional_indicator_w',
+        'regional_indicator_x',
+        'regional_indicator_y',
+        'regional_indicator_z',
+    ]
 
     def __init__(self, bot):
         self.bot = bot
         self.leaderboard = {}
-        self.current_choices = []
-        self.current_bet = {}
+        self.current_bets_messages = []
         self._load_data()
 
     def _load_data(self):
         try:
             with open(self.DATA_FILE_PATH, 'br') as data_file:
-                self.leaderboard = pickle.load(data_file)
+                self.leaderboard, self.current_bets_messages = pickle.load(data_file)
         except FileNotFoundError:
             pass
 
     def _save_data(self):
         with open(self.DATA_FILE_PATH, 'bw') as data_file:
-             pickle.dump(self.leaderboard, data_file)
+             pickle.dump((self.leaderboard, self.current_bets_messages), data_file)
+
+    @commands.Cog.listener()
+    async def on_ready(self):
+        print("Ready!")
 
     @commands.command()
     @commands.cooldown(1, 30)
@@ -38,48 +79,26 @@ class Bet(commands.Cog):
     @commands.command()
     @commands.has_permissions(administrator=True)
     async def startbet(self, ctx, *args):
-        if self.current_choices:
-            await ctx.send("Il y a déjà un bet en cours.\n!endbet")
-            return
         if not args:
             await ctx.send("Met des choix putain :face_with_symbols_over_mouth:.\n!startbet un deux trois")
             return
-        self.current_choices = copy(args)
-        self.current_bet = {index + 1: [] for index in range(len(self.current_choices))}
+        if len(args) > len(self.EMOJIES):
+            await ctx.send("Oups, max {} pour le moment.".format(len(self.EMOJIES)))
+            return
         message = 'Bet en cours !\n'
-        for id, choice in enumerate(args, start=1):
-            message += '\n\t[{}] {}'.format(id, choice)
-        await ctx.send(message)
+        for index, choice in enumerate(args):
+            message += '\n\t:{}: {}'.format(self.EMOJIES[index], choice)
+        message = await ctx.send(message)
+        for i in range(len(args)):
+            await message.add_reaction(self.EMOJIES[i])
+        self.current_bets_messages.append(message)
 
     @startbet.error
     async def startbet_error(self, ctx, error):
         if isinstance(error, commands.MissingPermissions):
             await ctx.send('Non mais tu te prends pour qui ?')
 
-    @commands.command()
-    async def bet(self, ctx, choice: int):
-        if not self.current_choices:
-            await ctx.send("Il y a pas de bet en cours :person_facepalming: .")
-            return
-        if ctx.author.id in itertools.chain(*self.current_bet.values()):
-            await ctx.send("T'as déjà voté essaye pas de gruger :middle_finger:.")
-            return
-        if choice > len(self.current_choices) or choice <= 0:
-            await ctx.send("Tu sais pas compter en fait :nerd: ?")
-            return
-        self.current_bet[choice].append(ctx.author.id)
-
-    @bet.error
-    async def bet_error(self, ctx, error):
-        if isinstance(error, commands.BadArgument):
-            await ctx.send("Ha ha très drole :clown:.")
-
-    @commands.command()
-    @commands.has_permissions(administrator=True)
     async def endbet(self, ctx, winning_choice: int):
-        if not self.current_choices:
-            await ctx.send("Il y a pas de bet en cours :person_facepalming: .")
-            return
         message = 'Les paris étaient :'
         winners = []
         # Set message and points in leaderboard
@@ -112,16 +131,8 @@ class Bet(commands.Cog):
         self.current_bet = {}
         self._save_data()
 
-    @endbet.error
-    async def endbet_error(self, ctx, error):
-        if isinstance(error, commands.MissingPermissions):
-            await ctx.send('Non mais tu te prends pour qui ?')
-        elif isinstance(error, commands.MissingRequiredArgument):
-            await ctx.send("Tu peux pas finir le bet sans résultat :zany_face:.")
-        elif isinstance(error, commands.BadArgument):
-            await ctx.send("Ha ha très drole :clown:.")
 
-
+print("Starting...")
 bot = commands.Bot(command_prefix='!')
 bot.add_cog(Bet(bot))
 bot.run(getenv('DISCORD_BOT_TOKEN'))

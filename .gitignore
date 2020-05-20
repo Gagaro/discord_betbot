@@ -113,3 +113,5 @@ dmypy.json
 /data.bin
 /.idea
 venv
+.venv
+start.bat
