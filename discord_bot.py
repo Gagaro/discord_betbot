@@ -80,7 +80,9 @@ class Bet(commands.Cog):
     async def leaderboard(self, ctx):
         message = 'Leaderboard\n\tNom\tScore'
         for member_id, score in sorted(self.leaderboard.items(), key=lambda x: x[1], reverse=True):
-            message += '\n\t{}\t{}'.format(self.bot.get_user(member_id).display_name, score)
+            member = self.bot.get_user(member_id)
+            if member is not None:
+                message += '\n\t{}\t{}'.format(member.display_name, score)
         await ctx.send(message)
 
     @commands.command()
