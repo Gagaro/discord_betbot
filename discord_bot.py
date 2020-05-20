@@ -78,7 +78,7 @@ class Bet(commands.Cog):
         self._save_data()
 
     @commands.command()
-    @commands.cooldown(1, 30)
+    @commands.cooldown(1, 10)
     async def leaderboard(self, ctx):
         message = 'Leaderboard\n\tNom\tScore'
         for member_id, score in sorted(self.leaderboard.items(), key=lambda x: x[1], reverse=True):
