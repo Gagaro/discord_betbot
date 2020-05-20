@@ -10,6 +10,7 @@ from discord.ext import commands
 class Bet(commands.Cog):
     DATA_FILE_PATH = 'data.bin'
     CHOICES_KEY = '__CHOICES'
+    VOTES_KEY = '__VOTES'
     MAX_CHOICES = 20
     EMOJIES = [
         '🤪',
@@ -69,10 +70,11 @@ class Bet(commands.Cog):
             return
         if reaction.emoji not in self.current_bets[message.id][self.CHOICES_KEY].keys():
             return
-        if user.id in self.current_bets[message.id] and reaction.emoji != self.current_bets[message.id][user.id]:
-            await message.remove_reaction(reaction.emoji, user)
-            return
-        self.current_bets[message.id][user.id] = reaction.emoji
+        if user.id in self.current_bets[message.id]:
+            if reaction.emoji != self.current_bets[message.id][self.VOTES_KEY][user.id]:
+                await message.remove_reaction(reaction.emoji, user)
+                return
+        self.current_bets[message.id][self.VOTES_KEY][user.id] = reaction.emoji
         self._save_data()
 
     @commands.command()
@@ -109,6 +111,7 @@ class Bet(commands.Cog):
             await message.add_reaction(emoji)
         self.current_bets[message.id] = {
             self.CHOICES_KEY: choices,
+            self.VOTES_KEY: {},
         }
         self._save_data()
 
@@ -131,7 +134,7 @@ class Bet(commands.Cog):
         del self.current_bets[message_id]
         winners = []
         # Set message and points in leaderboard
-        for member, choice in bet.items():
+        for member, choice in bet[self.VOTES_KEY].items():
             # Winning choice can be the emoji or the value
             if choice == winning_choice or bet[self.CHOICES_KEY][choice].lower() == winning_choice.lower():
                 winners.append(self.bot.get_user(member))
