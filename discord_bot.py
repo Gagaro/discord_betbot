@@ -149,7 +149,7 @@ class Bet(commands.Cog):
                 )
             else:
                 await ctx.send(
-                    'Bravo à {}'.format(', '.format([member.display_name for member in winners]))
+                    'Bravo à {}'.format(', '.join([member.display_name for member in winners]))
                 )
         else:
             await ctx.send("C'est vraiment un serveur de looser ici :face_with_hand_over_mouth: .")
