@@ -7,6 +7,22 @@ from os import getenv
 from discord.ext import commands
 
 
+class Player:
+
+    def __init__(self, member_id):
+        self.member_id = member_id
+        self.participation_count = 0
+        self.win_count = 0
+
+    def add_participation(self, win=False):
+        self.participation_count += 1
+        if win:
+            self.win_count += 1
+
+    def get_member(self, bot):
+        return bot.get_user(self.member_id)
+
+
 class Bet(commands.Cog):
     DATA_FILE_PATH = 'data.bin'
     CHOICES_KEY = '__CHOICES'
@@ -36,7 +52,7 @@ class Bet(commands.Cog):
 
     def __init__(self, bot):
         self.bot = bot
-        self.leaderboard = {}
+        self.players = {}
         self.current_bets = {}
         self._load_data()
 
@@ -44,7 +60,7 @@ class Bet(commands.Cog):
         try:
             with open(self.DATA_FILE_PATH, 'br') as data_file:
                 (
-                    self.leaderboard,
+                    self.players,
                     self.current_bets
                 ) = pickle.load(data_file)
         except FileNotFoundError:
@@ -53,7 +69,7 @@ class Bet(commands.Cog):
     def _save_data(self):
         with open(self.DATA_FILE_PATH, 'bw') as data_file:
              pickle.dump((
-                 self.leaderboard,
+                 self.players,
                  self.current_bets
              ), data_file)
 
@@ -80,12 +96,19 @@ class Bet(commands.Cog):
     @commands.command()
     @commands.cooldown(1, 10)
     async def leaderboard(self, ctx):
-        message = 'Leaderboard\n\tNom\tScore'
-        for member_id, score in sorted(self.leaderboard.items(), key=lambda x: x[1], reverse=True):
-            member = self.bot.get_user(member_id)
+        message = 'Leaderboard\n===========\nNom              Score\n'
+        for player in sorted(self.players.values(), key=lambda x: x.win_count, reverse=True):
+            member = player.get_member(self.bot)
             if member is not None:
-                message += '\n\t{}\t{}'.format(member.display_name, score)
+                message += '\n{:16}{} / {}'.format(member.display_name, player.win_count, player.participation_count)
         await ctx.send(message)
+
+    @commands.command()
+    @commands.has_permissions(administrator=True)
+    async def clear_leaderboard(self, ctx):
+        self.players = {}
+        self._save_data()
+        await ctx.send("RIP leaderboard :ghost:")
 
     @commands.command()
     @commands.has_permissions(administrator=True)
@@ -134,22 +157,25 @@ class Bet(commands.Cog):
         del self.current_bets[message_id]
         winners = []
         # Set message and points in leaderboard
-        for member, choice in bet[self.VOTES_KEY].items():
+        for member_id, choice in bet[self.VOTES_KEY].items():
+            # Initialize player if it is his first participation
+            if member_id not in self.players:
+                self.players[member_id] = Player(member_id=member_id)
             # Winning choice can be the emoji or the value
             if choice == winning_choice or bet[self.CHOICES_KEY][choice].lower() == winning_choice.lower():
-                winners.append(self.bot.get_user(member))
-                self.leaderboard[member] = self.leaderboard.setdefault(member, 0) + 1
+                self.players[member_id].add_participation(win=True)
+                winners.append(self.players[member_id].get_member(self.bot))
             else:
-                self.leaderboard.setdefault(member, 0)
+                self.players[member_id].add_participation(win=False)
 
         if winners:
             if len(winners) == 1:
                 await ctx.send(
-                    'Un seul mec intelligent ici, bravo à {}'.format(winners[0].display_name)
+                    'Un seul mec intelligent ici, bravo à {}'.format(winners[0].mention)
                 )
             else:
                 await ctx.send(
-                    'Bravo à {}'.format(', '.join([member.display_name for member in winners]))
+                    'Bravo à {}'.format(', '.join([member.mention for member in winners]))
                 )
         else:
             await ctx.send("C'est vraiment un serveur de looser ici :face_with_hand_over_mouth: .")
