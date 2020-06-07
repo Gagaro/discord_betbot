@@ -85,8 +85,9 @@ class Bet(commands.Cog):
         if message.id not in self.current_bets:
             return
         if reaction.emoji not in self.current_bets[message.id][self.CHOICES_KEY].keys():
+            await message.remove_reaction(reaction.emoji, user)
             return
-        if user.id in self.current_bets[message.id]:
+        if user.id in self.current_bets[message.id][self.VOTES_KEY]:
             if reaction.emoji != self.current_bets[message.id][self.VOTES_KEY][user.id]:
                 await message.remove_reaction(reaction.emoji, user)
                 return
